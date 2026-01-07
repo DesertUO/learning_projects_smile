@@ -45,6 +45,9 @@ please open an issue.
 
 Too much text xddd
 
+# License
+[License](LICENSE)
+
 ## By DesertUO
 
 See ya! :)
