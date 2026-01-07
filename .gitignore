@@ -1,0 +1,8 @@
+cache/
+build/
+# I don't think anyone will use the one bellow, but just in case
+.vscode/
+# xd
+.cache/
+.node_modules/
+.idea/
