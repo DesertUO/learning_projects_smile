@@ -13,24 +13,24 @@ You'll probably need cmake to build some of the projects here, as well as
 python for some others.
 List of the languages used in this repo (before writting any project xd) (probably
 skipped some and never used others):
-    * C++
-    * Rust
-    * Python
-    * JavaScript
-    * TypeScript
-    * C
-    * C#
-    * Java <- Probably only for Minecraft plugins and mods xd
-    * Go
-    * Lua
-    * ...
+* C++
+* Rust
+* Python
+* JavaScript
+* TypeScript
+* C
+* C#
+* Java <- Probably only for Minecraft plugins and mods xd
+* Go
+* Lua
+* ...
 
 libraries that I'll probably use that you might need to install:
-    * SDL3 (SDL3_ttf)
-    * GLEW
-    * glm
-    * ImGui
-    * ...
+* SDL3 (SDL3_ttf)
+* GLEW
+* glm
+* ImGui
+* ...
 
 I'll be updating this lists from time to time.
 
