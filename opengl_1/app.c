@@ -557,13 +557,13 @@ void renderScene(GLFWwindow* window, Vector_PhysicBody* bodies) {
     
     triangleBuffer.count = 0;
 
-    updateTrail(&sunTrail, bodies->data[0].circ.pos); // cap at 512 points
+    updateTrail(&sunTrail, bodies->data[0].circ.pos);
     drawTrail(&sunTrail, 2.0f);
 
-    updateTrail(&earthTrail, bodies->data[1].circ.pos); // cap at 512 points
+    updateTrail(&earthTrail, bodies->data[1].circ.pos);
     drawTrail(&earthTrail, 2.0f);
 
-    updateTrail(&moonTrail, bodies->data[2].circ.pos); // cap at 512 points
+    updateTrail(&moonTrail, bodies->data[2].circ.pos);
     drawTrail(&moonTrail, 2.0f);
     
     for(int i = 0 ; i < bodies->length; i++) {
