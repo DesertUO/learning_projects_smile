@@ -448,28 +448,6 @@ bool checkAABBCircAllInRect(Circle circ, Rectangle rect) {
     return true;
 }
 
-
-// Probably deprecated
-[[deprecated("Changed to a nested loop to update bodies with respect to each other")]]
-void updateBodyPosition(PhysicBody* circ, double deltaTime) {
-    if(circ->Static) { return; }
-
-    circ->vel = (float2){circ->vel.x + gravity_acc.x*deltaTime, circ->vel.y + gravity_acc.y*deltaTime};
-
-    float2 newPos = {
-        circ->circ.pos.x + circ->vel.x * deltaTime,
-        circ->circ.pos.y + circ->vel.y * deltaTime
-    };
-
-    if(checkAABBCircAllInRect((Circle){circ->circ.r, newPos, circ->circ.col}, screenBox)) {
-        circ->circ.pos = newPos;
-    } else {
-        circ->vel.y = -circ->vel.y * 1.0f;
-        circ->circ.pos.y = screenBox.size.y - circ->circ.r;
-        //circ->vel = (float2){0.0f, 0.0f};
-    }
-}
-
 void resolveCircleCollision(PhysicBody* a, PhysicBody* b) {
     float2 delta = float2_sub(b->circ.pos, a->circ.pos);
     float dist = sqrtf(delta.x*delta.x + delta.y*delta.y);
