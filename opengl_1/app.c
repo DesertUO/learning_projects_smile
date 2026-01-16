@@ -31,7 +31,7 @@ GLuint shaderProgram;
 
 // Critial functions?
 
-void fatalError(const char* s) {
+void crash(const char* s) {
     fprintf(stderr, s);
 
     printf("Press a Enter to continue...");
@@ -300,18 +300,30 @@ void drawTriangle(Triangle* triangle) {
 }
 
 void drawRectangle(Rectangle rect) {
+    float hx = rect.size.x * 0.5f;
+    float hy = rect.size.y * 0.5f;
 
+    Vertex v[4] = {
+                        {
+                            { rect.pos.x + hx, rect.pos.y + hy },
+                            rect.col
+                        },
+                        {
+                            { rect.pos.x - hx, rect.pos.y + hy },
+                            rect.col
+                        },
+                        {
+                            { rect.pos.x - hx, rect.pos.y - hy },
+                            rect.col
+                        },
+                        {
+                            { rect.pos.x + hx, rect.pos.y - hy },
+                            rect.col
+                        }
+                    };
 
-    Vertex va1 = {{rect.size.x/2.0f + rect.pos.x, rect.size.y/2.0f + rect.pos.y}, rect.col};
-    Vertex va2 = {{-rect.size.x/2.0f + rect.pos.x, -rect.size.y/2.0f + rect.pos.y}, rect.col};
-    Vertex va3 = {{-rect.size.x/2.0f + rect.pos.x, rect.size.y/2.0f + rect.pos.y}, rect.col};
-
-    Vertex vb1 = {{rect.size.x/2.0f + rect.pos.x, rect.size.y/2.0f + rect.pos.y}, rect.col};
-    Vertex vb2 = {{-rect.size.x/2.0f + rect.pos.x, -rect.size.y/2.0f + rect.pos.y}, rect.col};
-    Vertex vb3 = {{rect.size.x/2.0f + rect.pos.x, -rect.size.y/2.0f + rect.pos.y}, rect.col};
-
-    Triangle t1 = {va1, va2, va3};
-    Triangle t2 = {vb1, vb2, vb3};
+    Triangle t1 = { v[0], v[2], v[1] };
+    Triangle t2 = { v[0], v[2], v[3] };
 
     drawTriangle(&t1);
     drawTriangle(&t2);
@@ -382,7 +394,7 @@ void drawTrail(Trail* trail, float thickness) {
 
 GLFWwindow* initialize() {
     if (!glfwInit()) {
-        fatalError("Failed to initialize GLFW");
+        crash("Failed to initialize GLFW");
     }
 
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
@@ -393,7 +405,7 @@ GLFWwindow* initialize() {
     GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "OPENGL_1", NULL, NULL);
     if (window == NULL) {
         glfwTerminate();
-        fatalError("Failed to create window");
+        crash("Failed to create window");
     }
     glfwMakeContextCurrent(window);
 
@@ -402,7 +414,7 @@ GLFWwindow* initialize() {
 
     glewExperimental = GL_TRUE;
     if (glewInit() != GLEW_OK) {
-        fatalError("Failed to initialize GLEW");
+        crash("Failed to initialize GLEW");
     }
 
     glViewport(0, 0, WIDTH, HEIGHT);
@@ -440,10 +452,10 @@ bool checkAABBCircCirc(Circle a, Circle b) {
 }
 
 bool checkAABBCircAllInRect(Circle circ, Rectangle rect) {
-    if (circ.pos.x - circ.r < rect.pos.x) return false;               // left edge
-    if (circ.pos.x + circ.r > rect.pos.x + rect.size.x) return false; // right edge
-    if (circ.pos.y - circ.r < rect.pos.y) return false;               // top edge
-    if (circ.pos.y + circ.r > rect.pos.y + rect.size.y) return false; // bottom edge
+    if (circ.pos.x - circ.r < rect.pos.x) return false;                 // left edge
+    if (circ.pos.x + circ.r > rect.pos.x + rect.size.x) return false;   // right edge
+    if (circ.pos.y - circ.r < rect.pos.y) return false;                 // top edge
+    if (circ.pos.y + circ.r > rect.pos.y + rect.size.y) return false;   // bottom edge
 
     return true;
 }
@@ -515,7 +527,7 @@ void updateBodiesPosition(Vector_PhysicBody* bodies, double deltaTime) {
 
 /* Main Functions */
 void updateScene(double deltaTime, Vector_PhysicBody* bodies) {
-    
+
     /*
     for(int i= 0 ; i < bodies->length; i++) {
         updateBodyPosition(&bodies->data[i], deltaTime);
@@ -532,7 +544,7 @@ void renderScene(GLFWwindow* window, Vector_PhysicBody* bodies) {
     //glClearColor(0.05f, 0.05f, 0.1f, 1.0f);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
-    
+
     triangleBuffer.count = 0;
 
     updateTrail(&sunTrail, bodies->data[0].circ.pos);
@@ -543,11 +555,14 @@ void renderScene(GLFWwindow* window, Vector_PhysicBody* bodies) {
 
     updateTrail(&moonTrail, bodies->data[2].circ.pos);
     drawTrail(&moonTrail, 2.0f);
-    
+
     for(int i = 0 ; i < bodies->length; i++) {
         drawCircle(bodies->data[i].circ.r, bodies->data[i].circ.pos, bodies->data[i].circ.col);
     }
 
+    // Test
+    Rectangle a = {{200.0f, 204.0f}, {50.0f, 100.0f}, {255, 255, 0, 255}};
+    drawRectangle(a);
 
     sendTrianglesToGPU();
 
@@ -572,7 +587,7 @@ void gameLoop(GLFWwindow* window, Vector_PhysicBody* bodies) {
 int main(int argc, const char * argv[]) {
     GLFWwindow* window = initialize();
     initTriangleRenderer(&triangleVAO, &triangleVBO);
-	
+
 	const char* vertSrc = load_file_as_string("Shaders/triangle_shader.vert");
 	const char* fragSrc = load_file_as_string("Shaders/triangle_shader.frag");
 
