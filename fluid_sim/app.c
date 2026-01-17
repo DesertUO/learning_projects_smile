@@ -452,6 +452,35 @@ void applyGravityToBodies(Vector_PhysicBody* bodies, double deltaTime, Vector_fl
     }
 }
 
+void resolveWorldBoxCollisions(Vector_PhysicBody* bodies) {
+    for(int i = 0; i < bodies->length; i++) {
+        Circle* circ = &bodies->data[i].circ;
+
+        if(!checkAABBCircAllInRect(*circ, screenBox)) {
+            // Left wall
+            if(circ->pos.x - circ->r < screenBox.pos.x) {
+                circ->pos.x = screenBox.pos.x + circ->r;
+                bodies->data[i].vel.x *= -0.7f;
+            }
+            // Right wall
+            if(circ->pos.x + circ->r > screenBox.pos.x + screenBox.size.x) {
+                circ->pos.x = screenBox.pos.x + screenBox.size.x - circ->r;
+                bodies->data[i].vel.x *= -0.7f;
+            }
+            // Top wall
+            if(circ->pos.y - circ->r < screenBox.pos.y) {
+                circ->pos.y = screenBox.pos.y + circ->r;
+                bodies->data[i].vel.y *= -0.7f;
+            }
+            // Bottom wall
+            if(circ->pos.y + circ->r > screenBox.pos.y + screenBox.size.y) {
+                circ->pos.y = screenBox.pos.y + screenBox.size.y - circ->r;
+                bodies->data[i].vel.y *= -0.7f;
+            }
+        }
+    }
+}
+
 void updateBodiesPosition(Vector_PhysicBody* bodies, double deltaTime, EngineSettings* engineSettings) {
     Vector_float2 accelerations;
     init_vector_float2(&accelerations);
@@ -494,32 +523,7 @@ void updateBodiesPosition(Vector_PhysicBody* bodies, double deltaTime, EngineSet
 
     // World box collision
     if(engineSettings->enableWorldBoxPhysicsBox) {
-        for(int i = 0; i < bodies->length; i++) {
-            Circle* circ = &bodies->data[i].circ;
-
-            if(!checkAABBCircAllInRect(*circ, screenBox)) {
-                // Left wall
-                if(circ->pos.x - circ->r < screenBox.pos.x) {
-                    circ->pos.x = screenBox.pos.x + circ->r;
-                    bodies->data[i].vel.x *= -0.7f;
-                }
-                // Right wall
-                if(circ->pos.x + circ->r > screenBox.pos.x + screenBox.size.x) {
-                    circ->pos.x = screenBox.pos.x + screenBox.size.x - circ->r;
-                    bodies->data[i].vel.x *= -0.7f;
-                }
-                // Top wall
-                if(circ->pos.y - circ->r < screenBox.pos.y) {
-                    circ->pos.y = screenBox.pos.y + circ->r;
-                    bodies->data[i].vel.y *= -0.7f;
-                }
-                // Bottom wall
-                if(circ->pos.y + circ->r > screenBox.pos.y + screenBox.size.y) {
-                    circ->pos.y = screenBox.pos.y + screenBox.size.y - circ->r;
-                    bodies->data[i].vel.y *= -0.7f;
-                }
-            }
-        }
+        resolveWorldBoxCollisions(bodies);
     }
 
     free_vector_float2(&accelerations);
@@ -643,8 +647,8 @@ void generateBodies(Vector_PhysicBody* bodies, int count) {
 int main(int argc, const char * argv[]) {
     EngineSettings engineSettings = {
         false,
-        true,
-        true,
+        false,
+        false,
         true
     };
 
