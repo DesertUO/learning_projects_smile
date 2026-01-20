@@ -1,8 +1,10 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <string.h>
 #include <limits.h>
+#include <time.h>
 
 #include <GL/glew.h>
 
@@ -115,7 +117,23 @@ typedef struct PhysicBody {
     bool Static;
 } PhysicBody;
 
+typedef struct Particle {
+    float2 pos;
+    float2 prev_pos;
+    float2 vel;
+    bool Static;
+} Particle;
+
 VECTOR_DEFINE(PhysicBody)
+
+const Circle defaultParticleCircle = {  5.0f,
+                                        (float2){0.0f, 0.0f},
+                                        (Color){255, 255, 255, 255}
+                                     };
+
+const float particleViscosity = 0.98f;
+
+VECTOR_DEFINE(Particle)
 
 typedef struct Trail {
     Vector_float2 points;
@@ -435,6 +453,20 @@ void resolveCircleCollision(PhysicBody* a, PhysicBody* b) {
     }
 }
 
+void resolveCircleCollisionParticles(Particle* a, Particle* b) {
+    float2 delta = float2_sub(b->pos, a->pos);
+    float dist = sqrtf(delta.x*delta.x + delta.y*delta.y);
+    float penetration = (2 * defaultParticleCircle.r) - dist;
+    if(penetration > 0 && dist > 1e-6f) {
+        float2 normal = float2_mul(delta, 1.0f / dist);
+        float2 correction = float2_mul(normal, penetration * 0.5f);
+
+        if(!a->Static) a->pos = float2_sub(a->pos, correction);
+        if(!b->Static) b->pos = float2_add(b->pos, correction);
+
+    }
+}
+
 void applyGravityToBodies(Vector_PhysicBody* bodies, double deltaTime, Vector_float2 accelerations) {
     for(int i = 0; i < bodies->length; i++) {
         if(bodies->data[i].Static) continue;
@@ -476,6 +508,37 @@ void resolveWorldBoxCollisions(Vector_PhysicBody* bodies) {
             if(circ->pos.y + circ->r > screenBox.pos.y + screenBox.size.y) {
                 circ->pos.y = screenBox.pos.y + screenBox.size.y - circ->r;
                 bodies->data[i].vel.y *= -0.7f;
+            }
+        }
+    }
+}
+
+void resolveWorldBoxCollisionsParticles(Vector_Particle* particles) {
+    for(int i = 0; i < particles->length; i++) {
+        Circle circ_ = defaultParticleCircle;
+        circ_.pos = particles->data[i].pos;
+        Circle* circ = &circ_;
+
+        if(!checkAABBCircAllInRect(*circ, screenBox)) {
+            // Left wall
+            if(circ->pos.x - circ->r < screenBox.pos.x) {
+                circ->pos.x = screenBox.pos.x + circ->r;
+                particles->data[i].vel.x *= -0.7f;
+            }
+            // Right wall
+            if(circ->pos.x + circ->r > screenBox.pos.x + screenBox.size.x) {
+                circ->pos.x = screenBox.pos.x + screenBox.size.x - circ->r;
+                particles->data[i].vel.x *= -0.7f;
+            }
+            // Top wall
+            if(circ->pos.y - circ->r < screenBox.pos.y) {
+                circ->pos.y = screenBox.pos.y + circ->r;
+                particles->data[i].vel.y *= -0.7f;
+            }
+            // Bottom wall
+            if(circ->pos.y + circ->r > screenBox.pos.y + screenBox.size.y) {
+                circ->pos.y = screenBox.pos.y + screenBox.size.y - circ->r;
+                particles->data[i].vel.y *= -0.7f;
             }
         }
     }
@@ -529,22 +592,66 @@ void updateBodiesPosition(Vector_PhysicBody* bodies, double deltaTime, EngineSet
     free_vector_float2(&accelerations);
 }
 
+
+void updateParticlesPosition(Vector_Particle* particles, float deltaTime, EngineSettings* engineSettings) {
+    Vector_float2 accelerations;
+    init_vector_float2(&accelerations);
+
+    for(int i = 0; i < particles->length; i++) {
+        append_vector_float2(&accelerations, (float2){0,0});
+    }
+
+    // Apply downward gravity to all non-static bodies
+    if(engineSettings->enableWorldBoxGravity) {
+        for(int i = 0; i < particles->length; i++) {
+            if(particles->data[i].Static) continue;
+            accelerations.data[i] = float2_add(accelerations.data[i], gravity_acc);
+        }
+    }
+
+    // Update positions and velocities
+    for(int i = 0; i < particles->length; i++) {
+        if(particles->data[i].Static) continue;
+
+        particles->data[i].vel = float2_add(particles->data[i].vel, float2_mul(accelerations.data[i], deltaTime));
+
+        float2 newPos = float2_add(particles->data[i].pos, float2_mul(particles->data[i].vel, deltaTime));
+        particles->data[i].pos = newPos;
+    }
+
+    // Collision detection and resolution
+    if(engineSettings->enableCollisions) {
+        for(int i = 0; i < particles->length; i++) {
+            for(int j = i+1; j < particles->length; j++) {
+                resolveCircleCollisionParticles(&particles->data[i], &particles->data[j]);
+            }
+        }
+    }
+
+    // World box collision
+    if(engineSettings->enableWorldBoxPhysicsBox) {
+        resolveWorldBoxCollisionsParticles(particles);
+    }
+
+    free_vector_float2(&accelerations);
+}
+
 /* Main Functions */
-void updateScene(double deltaTime, Vector_PhysicBody* bodies, EngineSettings* engineSettings) {
+void updateScene(double deltaTime, Vector_Particle* particcles, EngineSettings* engineSettings) {
 
     /*
     for(int i= 0 ; i < bodies->length; i++) {
         updateBodyPosition(&bodies->data[i], deltaTime);
     }
     */
-    updateBodiesPosition(bodies, deltaTime, engineSettings);
+    updateParticlesPosition(particcles, deltaTime, engineSettings);
 }
 
 // Exmplae to make a trail for a body
 // Probably gonna change to a easier way to make trails for bodies
 // Trail bodyTrail;
 
-void renderScene(GLFWwindow* window, Vector_PhysicBody* bodies) {
+void renderScene(GLFWwindow* window, Vector_Particle* particles) {
     //glClearColor(0.05f, 0.05f, 0.1f, 1.0f);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -555,8 +662,8 @@ void renderScene(GLFWwindow* window, Vector_PhysicBody* bodies) {
     // updateTrail(&bodyTrail, bodies->data[0].circ.pos);
     // drawTrail(&bodyTrail, 2.0f);
 
-    for(int i = 0 ; i < bodies->length; i++) {
-        drawCircle(bodies->data[i].circ.r, bodies->data[i].circ.pos, bodies->data[i].circ.col);
+    for(int i = 0 ; i < particles->length; i++) {
+        drawCircle(defaultParticleCircle.r, particles->data[i].pos, defaultParticleCircle.col);
     }
 
     // Test
@@ -568,7 +675,7 @@ void renderScene(GLFWwindow* window, Vector_PhysicBody* bodies) {
     glfwSwapBuffers(window);
 }
 
-void gameLoop(GLFWwindow* window, Vector_PhysicBody* bodies, EngineSettings* engineSettings) {
+void gameLoop(GLFWwindow* window, Vector_Particle* particles, EngineSettings* engineSettings) {
     double lastTime = glfwGetTime();
 
     while (!glfwWindowShouldClose(window)) {
@@ -578,73 +685,56 @@ void gameLoop(GLFWwindow* window, Vector_PhysicBody* bodies, EngineSettings* eng
 
         glfwPollEvents();
 
-        updateScene(deltaTime, bodies, engineSettings);
-        renderScene(window, bodies);
+        updateScene(deltaTime, particles, engineSettings);
+        renderScene(window, particles);
     }
 }
 
-void generateBodies(Vector_PhysicBody* bodies, int count) {
-    float mass = (float)(rand() % 500 + 100);
-    float radius = sqrtf(mass) * 0.5f;
+bool contains_float2(Vector_float2* v, float2 f) {
+    for(int i = 0; i < v->length; i++) {
+        if(v->data[i].x == f.x && v->data[i].y == f.y) { return true; }
+    }
+    return false;
+}
 
-    Vector_float2 positions;
-    init_vector_float2(&positions);
+void generateParticles(Vector_Particle* particles, int count) {
+    Vector_float2 prev_pos;
+    init_vector_float2(&prev_pos);
 
     for(int i = 0; i < count; i++) {
-        float2 pos = {
-            (float)(rand() % WIDTH),
-            (float)(rand() % HEIGHT)
-        };
+        Particle new_particle;
 
-        if(positions.length > 0) {
-            bool overlapping;
-            do {
-                overlapping = false;
-                for(int j = 0; j < positions.length; j++) {
-                    float2 existingPos = positions.data[j];
-                    float dx = pos.x - existingPos.x;
-                    float dy = pos.y - existingPos.y;
-                    float distSqr = dx*dx + dy*dy;
-                    float minDist = radius * 2.0f;
-                    if(distSqr < minDist * minDist) {
-                        overlapping = true;
-                        pos = (float2){
-                            (float)(rand() % WIDTH),
-                            (float)(rand() % HEIGHT)
-                        };
-                        break;
-                    }
-                }
-            } while(overlapping);
+        float2 pos = { (float)(rand() % WIDTH), (float)(rand() % HEIGHT)};
+        Circle circ_ = defaultParticleCircle;
+        circ_.pos = pos;
+        if(prev_pos.length == 0) {
+            append_vector_float2(&prev_pos, pos);
+        }
+        while (contains_float2(&prev_pos, pos) || (!checkAABBCircAllInRect(circ_, screenBox))) {
+            pos = (float2){(float)(rand() % WIDTH), (float)(rand() % HEIGHT)};
+            circ_.pos = pos;
         }
 
-        append_vector_float2(&positions, pos);
+        new_particle.pos = pos;
+        new_particle.prev_pos = pos;
+        new_particle.Static = false;
+        new_particle.vel = (float2){0.0f, 0.0f};
 
-        if(pos.x > WIDTH - radius) pos.x = WIDTH - radius;
-        if(pos.x < radius) pos.x = radius;
-
-        if(pos.y > HEIGHT - radius) pos.y = HEIGHT - radius;
-        if(pos.y < radius) pos.y = radius;
-
-        Color col = {
-            (uint8_t)(rand() % 256),
-            (uint8_t)(rand() % 256),
-            (uint8_t)(rand() % 256),
-            255
-        };
-
-        PhysicBody body = {
-            { radius, pos, col },
-            { 0.0f, 0.0f },
-            mass,
-            false
-        };
-
-        append_vector_PhysicBody(bodies, body);
+        append_vector_Particle(particles, new_particle);
     }
 }
 
 int main(int argc, const char * argv[]) {
+    int particle_count = 0;
+
+    if(argc < 2) {
+        particle_count = 500;
+    } else {
+        particle_count = atoi(argv[1]);
+    }
+
+    srand(time(NULL));
+
     EngineSettings engineSettings = {
         false,
         false,
@@ -655,49 +745,24 @@ int main(int argc, const char * argv[]) {
     GLFWwindow* window = initialize();
     initTriangleRenderer(&triangleVAO, &triangleVBO);
 
-	const char* vertSrc = load_file_as_string("Shaders/triangle_shader.vert");
-	const char* fragSrc = load_file_as_string("Shaders/triangle_shader.frag");
+    const char* vertSrc = load_file_as_string("Shaders/triangle_shader.vert");
+    const char* fragSrc = load_file_as_string("Shaders/triangle_shader.frag");
 
-	shaderProgram = createShaderProgram(vertSrc, fragSrc);
+    shaderProgram = createShaderProgram(vertSrc, fragSrc);
 
     free((void*)vertSrc);
     free((void*)fragSrc);
 
-    // Example to make a body
-    /*
-    float mass = 900.0f;
-    float radius = 15.0f;
-
-    const Color body_color = {252, 229, 112, 255};
-    float2 body_pos = {640.0f, 260.0f};
-    PhysicBody body = {
-        (Circle){
-            radius,
-            body_pos,
-            body_color
-        },
-        {0.0f, 0.0f},
-        mass,
-        false
-    };
-
-    initTrail(&bodyTrail);
-    bodyTrail.col = (Color){100, 200, 120, 100};
-    */
-
-
-    Vector_PhysicBody Sim_Bodies;
-    init_vector_PhysicBody(&Sim_Bodies);
+    Vector_Particle particles;
+    init_vector_Particle(&particles);
+    generateParticles(&particles, particle_count);
 
     // append_vector_PhysicBody(&Sim_Bodies, body_1);
 
-    // Do not try more than like
-    generateBodies(&Sim_Bodies, 1000);
-
-    gameLoop(window, &Sim_Bodies, &engineSettings);
+    gameLoop(window, &particles, &engineSettings);
     glfwTerminate();
 
-    free_vector_PhysicBody(&Sim_Bodies);
+    free_vector_Particle(&particles);
 
     return EXIT_SUCCESS;
 }
