@@ -316,10 +316,6 @@ bool is_point_inside_box(int2 point, int2 box_tl, int2 box_br) {
     return (point.x >= box_tl.x && point.x <= box_br.x) && (point.y >= box_tl.y && point.y <= box_br.y);
 }
 
-bool is_point_in_maze(int2 point) {
-    return is_point_inside_box(point, valid_box.tl, valid_box.br);
-}
-
 typedef enum Direction {
     top,
     bottom,
@@ -360,6 +356,10 @@ void initialize_maze(maze* maze) {
 const float h_g = GRID_SIZE / 2.0f;
 const float line_thick = 5.0f;
 const float h_l_t = line_thick / 2.0f;
+
+bool is_point_in_maze(int2 point) {
+    return is_point_inside_box(point, valid_box.tl, valid_box.br);
+}
 
 void render_maze(maze* maze) {
     Color line_color = {50, 0, 60, 255};
@@ -439,22 +439,22 @@ void set_wall_value(maze* maze, int2 pos, Direction dir, bool value) {
     uint8_t* cell = &maze->grid[pos.x][pos.y].wall;
     Direction op_dir;
 
-    int2 new_pos = pos;
+    int2 adyacent_pos = pos;
     switch(dir) {
         case top:
-            new_pos.y -= 1;
+            adyacent_pos.y -= 1;
             op_dir = bottom;
             break;
         case bottom:
-            new_pos.y += 1;
+            adyacent_pos.y += 1;
             op_dir = top;
             break;
         case left:
-            new_pos.x -= 1;
+            adyacent_pos.x -= 1;
             op_dir = right;
             break;
         case right:
-            new_pos.x += 1;
+            adyacent_pos.x += 1;
             op_dir = left;
             break;
         default:
@@ -462,8 +462,8 @@ void set_wall_value(maze* maze, int2 pos, Direction dir, bool value) {
     }
 
     if(value) { set_bit(cell, dir); } else { clear_bit(cell, dir); }
-    if(is_point_in_maze(new_pos)) {
-        uint8_t* adyacent_cell = &maze->grid[new_pos.x][new_pos.y].wall;
+    if(is_point_in_maze(adyacent_pos)) {
+        uint8_t* adyacent_cell = &maze->grid[adyacent_pos.x][adyacent_pos.y].wall;
         if(value) { set_bit(adyacent_cell, op_dir); } else { clear_bit(adyacent_cell, op_dir); }
     }
 }
@@ -553,6 +553,48 @@ typedef struct Walker {
     Direction dir;
 } Walker;
 
+void predict_new_pos(Walker walker, int2* prediction) {
+    int2 new_pos = walker.head;
+    switch(walker.dir) {
+        case top:
+            new_pos.y -= 1;
+            break;
+        case bottom:
+            new_pos.y += 1;
+            break;
+        case left:
+            new_pos.x -= 1;
+            break;
+        case right:
+            new_pos.x += 1;
+            break;
+    }
+
+    *prediction =new_pos;
+}
+
+bool move_walker_in_dir(Walker* walker) {
+    int2 new_pos = walker->head;
+    switch(walker->dir) {
+        case top:
+            new_pos.y -= 1;
+            break;
+        case bottom:
+            new_pos.y += 1;
+            break;
+        case left:
+            new_pos.x -= 1;
+            break;
+        case right:
+            new_pos.x += 1;
+            break;
+    }
+    if(!is_point_in_maze(new_pos)) { return false; }
+
+    walker->head = new_pos;
+    return true;
+}
+
 // Carve maze
 void gen_maze(maze* maze, Walker* walker, Walker* prev_walker, int step) {
     int2 tmp_pos;
@@ -578,9 +620,18 @@ void gen_maze(maze* maze, Walker* walker, Walker* prev_walker, int step) {
     }
 
     // If this is an actual step then make the walker walk and open walls
+    Walker tmp_walker = *walker;
     do {
-        choose_wall(&tmp_dir);
-    } while(walker->dir == tmp_dir);
+        do {
+            choose_wall(&tmp_dir);
+        } while(prev_walker->dir == tmp_dir);
+
+
+        walker->dir = tmp_dir;
+
+    } while(!move_walker_in_dir(walker));
+
+    *prev_walker = tmp_walker;
 }
 
 
@@ -613,7 +664,9 @@ void renderScene(GLFWwindow* window, maze* maze, Walker walker, Walker prev_walk
 
     float walker_r = 25.0f;
     float2 walker_pos = {walker.head.x * GRID_SIZE + h_g + h_l_t, walker.head.y * GRID_SIZE + h_g + h_l_t};
+    float2 prev_walker_pos = {prev_walker.head.x * GRID_SIZE + h_g + h_l_t, prev_walker.head.y * GRID_SIZE + h_g + h_l_t};
 
+    drawCircle(walker_r, prev_walker_pos, (Color){200, 200, 100, 255});
     drawCircle(walker_r, walker_pos, (Color){255, 0, 0, 255});
 
     sendTrianglesToGPU();
