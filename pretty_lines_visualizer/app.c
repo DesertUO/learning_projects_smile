@@ -83,9 +83,6 @@ typedef struct int_box {
     int2 br;
 } int_box;
 
-// Sets the bounding box for the mazes points
-int_box valid_box = {(int2){0, 0}, (int2){MAZE_WITDH - 1, MAZE_HEIGHT - 1}};
-
 typedef struct Rectangle {
     float2 pos;
     float2 size;
@@ -243,31 +240,6 @@ void drawRectangle(Rectangle rect) {
     drawTriangle(&t2);
 }
 
-void drawCircle(float r, float2 pos, Color col) {
-    float theta = (2 * M_PI) / CIRC_RES;
-
-    for(int i = 0; i < CIRC_RES; i++) {
-        float theta_i = theta*i;
-        float theta_i_2 = theta * (i+1);
-
-        float2 pos_theta_i = {r * cos(theta_i), r * sin(theta_i)};
-        float2 pos_theta_i2 = {r * cos(theta_i_2), r * sin(theta_i_2)};
-
-        float2 final_pos_i = {pos.x + pos_theta_i.x, pos.y + pos_theta_i.y};
-        float2 final_pos_i2 = {pos.x + pos_theta_i2.x, pos.y + pos_theta_i2.y};
-
-        Triangle fragCircle = {
-            {
-                {pos, col},
-                {final_pos_i, col},
-                {final_pos_i2, col}
-            }
-        };
-
-        drawTriangle(&fragCircle);
-    }
-}
-
 GLFWwindow* initialize() {
     if (!glfwInit()) {
         crash("Failed to initialize GLFW");
@@ -298,26 +270,16 @@ GLFWwindow* initialize() {
 }
 
 // Generates a random number bewteen min and max inclusive
-void gen_valid_rand_num(int* num, int min, int max) {
+void gen_valid_rand(int* num, int min, int max) {
     *num = rand() % (max + 1);
     while(*num < min) {
         *num = rand() % (max + 1);
     }
 }
 
-void choose_rand_num(int* num, int a, int b) {
-    int choice;
-    gen_valid_rand_num(&choice, 0, 1);
-    *num = choice ? a : b;
-}
-
 // Is inside inclusive with edges
 bool is_point_inside_box(int2 point, int2 box_tl, int2 box_br) {
     return (point.x >= box_tl.x && point.x <= box_br.x) && (point.y >= box_tl.y && point.y <= box_br.y);
-}
-
-bool is_point_in_maze(int2 point) {
-    return is_point_inside_box(point, valid_box.tl, valid_box.br);
 }
 
 typedef enum Direction {
@@ -357,14 +319,13 @@ void initialize_maze(maze* maze) {
 // Empty spaces are on even coordinates
 // Edges are on odd coordinates
 
-const float h_g = GRID_SIZE / 2.0f;
-const float line_thick = 5.0f;
-const float h_l_t = line_thick / 2.0f;
-
 void render_maze(maze* maze) {
     Color line_color = {50, 0, 60, 255};
     Color no_line_color = {255, 255, 255, 100};
 
+    float h_g = GRID_SIZE / 2.0f;
+    float line_thick = 5.0f;
+    float h_l_t = line_thick / 2.0f;
 
     for(int i = 0; i < MAZE_WITDH; i++) {
         for(int j = 0; j < MAZE_HEIGHT; j++) {
@@ -429,8 +390,14 @@ void render_maze(maze* maze) {
     }
 }
 
+bool check_wall(maze* maze, int2 pos, Direction dir) {
+    uint8_t* cell = &maze->grid[pos.x][pos.y].wall;
+    return check_bit(*cell, dir);
+}
+
 void set_wall_value(maze* maze, int2 pos, Direction dir, bool value) {
-    if(!is_point_in_maze(pos)) {
+    int_box valid_box = {(int2){0, 0}, (int2){MAZE_WITDH - 1, MAZE_HEIGHT - 1}};
+    if(!is_point_inside_box(pos, valid_box.tl, valid_box.br)) {
         printf("Invalid position passed: x:%d, y:%d\n", pos.x, pos.y);
         printf("the position must not have the coords: width: %d, height: %d\n", MAZE_WITDH, MAZE_HEIGHT);
         return;
@@ -462,10 +429,14 @@ void set_wall_value(maze* maze, int2 pos, Direction dir, bool value) {
     }
 
     if(value) { set_bit(cell, dir); } else { clear_bit(cell, dir); }
-    if(is_point_in_maze(new_pos)) {
+    if(is_point_inside_box(new_pos, valid_box.tl, valid_box.br)) {
         uint8_t* adyacent_cell = &maze->grid[new_pos.x][new_pos.y].wall;
         if(value) { set_bit(adyacent_cell, op_dir); } else { clear_bit(adyacent_cell, op_dir); }
     }
+}
+
+void toggle_wall(maze* maze, int2 pos, Direction dir) {
+    set_wall_value(maze, pos, dir, !check_wall(maze, pos, dir));
 }
 
 void set_wall(maze* maze, int2 pos, Direction dir) {
@@ -476,121 +447,31 @@ void clear_wall(maze* maze, int2 pos, Direction dir) {
     set_wall_value(maze, pos, dir, false);
 }
 
-bool check_wall(maze* maze, int2 pos, Direction dir) {
-    uint8_t* cell = &maze->grid[pos.x][pos.y].wall;
-    return check_bit(*cell, dir);
-}
-
-void choose_pos(int2* walker_pos) {
-    int2 pos;
-    gen_valid_rand_num(&pos.x, 0, MAZE_WITDH - 1);
-    gen_valid_rand_num(&pos.y, 0, MAZE_WITDH - 1);
-    *walker_pos = pos;
-}
-
-
-void choose_wall(Direction* dir) {
-    *dir = rand() % 4;
-}
-
-void choose_point_outside_ring(int2* pos) {
-    int2 point;
-
-    bool axis = rand() % 2;
-
-    if(axis) {
-        choose_rand_num(&point.x, 0, MAZE_WITDH - 1);
-        gen_valid_rand_num(&point.y, 0, MAZE_HEIGHT - 1);
-    } else {
-        gen_valid_rand_num(&point.x, 0, MAZE_WITDH - 1);
-        choose_rand_num(&point.y, 0, MAZE_HEIGHT - 1);
-    }
-
-    *pos = point;
-}
-
-void get_outside_wall_from_outside_ring_point(int2 pos, Direction* wall) {
-    Direction side;
-    if(pos.x == 0) { side = left; }
-    if(pos.x == (MAZE_WITDH - 1)) { side = right; }
-    if(pos.y == 0) { side = top; }
-    if(pos.y == (MAZE_HEIGHT - 1)) { side = bottom; }
-
-    *wall = side;
-}
-
-bool is_outside_ring_wall(maze* maze, int2 pos, Direction dir) {
-    if(!is_point_in_maze(pos)) {
-        printf("Invalid position has been passed to is_border__wall(...)\n");
-        return false;
-    }
-
-    if(pos.y == 0 && dir == top) { return true; }
-    if(pos.y == (MAZE_HEIGHT - 1) && dir == bottom) { return true; }
-    if(pos.x == 0 && dir == left) { return true; }
-    if(pos.x == (MAZE_WITDH - 1) && dir == right) { return true; }
-
-    return false;
-}
-
-
-bool is_point_outside_ring(int2 pos) {
-    if(!is_point_in_maze(pos)) {
-        printf("Invalid position has been passed to is_border__wall(...)\n");
-        return false;
-    }
-
-    if(pos.y == 0) { return true; }
-    if(pos.y == (MAZE_HEIGHT - 1)) { return true; }
-    if(pos.x == 0) { return true; }
-    if(pos.x == (MAZE_WITDH - 1)) { return true; }
-
-    return false;
-}
-
-typedef struct Walker {
-    int2 head;
-    Direction dir;
-} Walker;
 
 // Carve maze
-void gen_maze(maze* maze, Walker* walker, Walker* prev_walker, int step) {
-    int2 tmp_pos;
-    Direction tmp_dir;
+void gen_maze(maze* maze, int* step) {
+    int2 pos;
 
     srand(time(NULL));
 
+    uint8_t* cell;
+    Direction rand_dir;
 
-    // If the step if the 0th or the 1st then add the entrances and put the
-    // walker on the maze
-    if(step < 2) {
-        do {
-            choose_point_outside_ring(&tmp_pos);
-            get_outside_wall_from_outside_ring_point(tmp_pos, &tmp_dir);
-        } while(!check_wall(maze, tmp_pos, tmp_dir));
+    gen_valid_rand(&pos.x, 0, MAZE_WITDH - 1);
+    gen_valid_rand(&pos.y, 0, MAZE_WITDH - 1);
 
-        clear_wall(maze, tmp_pos, tmp_dir);
+    rand_dir = rand() % 4;
 
-        if(step < 1) {
-            walker->head = tmp_pos;
-        }
-        return;
-    }
-
-    // If this is an actual step then make the walker walk and open walls
-    do {
-        choose_wall(&tmp_dir);
-    } while(walker->dir == tmp_dir);
+    toggle_wall(maze, pos, rand_dir);
+    step++;
 }
 
 
 /* Main Functions */
-void updateScene(double deltaTime, double* time_elapsed, maze* maze, int* step, Walker* walker, Walker* prev_walker) {
-    if(*time_elapsed >= 0.5) {
-        printf("Step: %d\n", *step);
-        gen_maze(maze, walker, prev_walker, *step);
+void updateScene(double deltaTime, double* time_elapsed, maze* maze, int* step) {
+    if(*time_elapsed >= 0.05) {
+        gen_maze(maze, step);
         *time_elapsed = 0.0;
-        *step = *step + 1;
     }
     return;
 }
@@ -599,7 +480,7 @@ void updateScene(double deltaTime, double* time_elapsed, maze* maze, int* step, 
 // Probably gonna change to a easier way to make trails for bodies
 // Trail bodyTrail;
 
-void renderScene(GLFWwindow* window, maze* maze, Walker walker, Walker prev_walker) {
+void renderScene(GLFWwindow* window, maze* maze) {
     //glClearColor(0.05f, 0.05f, 0.1f, 1.0f);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -610,11 +491,6 @@ void renderScene(GLFWwindow* window, maze* maze, Walker walker, Walker prev_walk
     // Rectangle a = {{200.0f, 204.0f}, {50.0f, 100.0f}, {255, 255, 0, 255}};
     // drawRectangle(a);
     render_maze(maze);
-
-    float walker_r = 25.0f;
-    float2 walker_pos = {walker.head.x * GRID_SIZE + h_g + h_l_t, walker.head.y * GRID_SIZE + h_g + h_l_t};
-
-    drawCircle(walker_r, walker_pos, (Color){255, 0, 0, 255});
 
     sendTrianglesToGPU();
 
@@ -627,21 +503,18 @@ void gameLoop(GLFWwindow* window, maze* maze) {
     double time_elapsed = 0;
     int step = 0;
 
-    int2 head = {-1, -1};
-    Walker walker = {head};
-    Walker prev_walker = {head};
-
     while (!glfwWindowShouldClose(window)) {
         double currentTime = glfwGetTime();
         float deltaTime = (float)(currentTime - lastTime);
         lastTime = currentTime;
 
         time_elapsed += deltaTime;
+        printf("Time elapsed: %lf\n", time_elapsed);
 
         glfwPollEvents();
 
-        updateScene(deltaTime, &time_elapsed, maze, &step, &walker, &prev_walker);
-        renderScene(window, maze, walker, prev_walker);
+        updateScene(deltaTime, &time_elapsed, maze, &step);
+        renderScene(window, maze);
     }
 }
 
