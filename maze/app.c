@@ -68,6 +68,13 @@ typedef struct int2 {
 
 VECTOR_DEFINE(int2);
 
+bool contains_vector_int2(Vector_int2* vector, int2 value) {
+    for(int i = 0; i < vector->length; i++) {
+        if(vector->data[i].x == value.x && vector->data[i].y == value.y) { return true; }
+    }
+    return false;
+}
+
 typedef ivec3 int3;
 typedef ivec4 int4;
 
@@ -320,7 +327,8 @@ typedef enum Direction {
     top,
     bottom,
     left,
-    right
+    right,
+    none
 } Direction;
 
 typedef struct cell {
@@ -332,6 +340,7 @@ typedef struct cell {
                    //         h t t
                    //         t   o
                    //             m
+    bool visited;
 } cell;
 
 // Represents the grid of a maze, including the edges
@@ -346,6 +355,7 @@ void initialize_maze(maze* maze) {
             set_bit(&maze->grid[i][j].wall, bottom);
             set_bit(&maze->grid[i][j].wall, left);
             set_bit(&maze->grid[i][j].wall, right);
+            maze->grid[i][j].visited = false;
         }
     }
 }
@@ -361,19 +371,30 @@ bool is_point_in_maze(int2 point) {
     return is_point_inside_box(point, valid_box.tl, valid_box.br);
 }
 
-void render_maze(maze* maze) {
+void render_maze(maze* maze, Vector_int2* visited_pos) {
     Color line_color = {50, 0, 60, 255};
-    Color no_line_color = {255, 255, 255, 100};
+    Color no_line_color = {255, 255, 255, 000};
+    Color unvisited_cell_col = {0, 0, 0, 255};
+    Color visited_cell_col = {50, 50, 150, 255};
+    Color final_cell_col = {100, 100, 150, 255};
 
 
     for(int i = 0; i < MAZE_WITDH; i++) {
         for(int j = 0; j < MAZE_HEIGHT; j++) {
+            int2 pos = {i, j};
             int2 cell_offset = (int2){i * GRID_SIZE + h_l_t, j * GRID_SIZE + h_l_t};
 
             Rectangle cell;
             cell.size = (float2){GRID_SIZE, GRID_SIZE};
             cell.pos = (float2){cell_offset.x + h_g, cell_offset.y + h_g};
-            cell.col = (Color){100, 100, 150, 255};
+            if(contains_vector_int2(visited_pos, pos)) {
+                cell.col = final_cell_col;
+            } else if(maze->grid[i][j].visited == true) {
+                cell.col = visited_cell_col;
+            } else {
+                cell.col = unvisited_cell_col;
+            }
+
             drawRectangle(cell);
 
         }
@@ -489,8 +510,15 @@ void choose_pos(int2* walker_pos) {
 }
 
 
-void choose_wall(Direction* dir) {
+void choose_dir(Direction* dir) {
     *dir = rand() % 4;
+}
+
+void get_oppositide_dir(Direction dir, Direction* op) {
+    if(dir == top) { *op = bottom; return;  }
+    if(dir == bottom) { *op = top; return; }
+    if(dir == left) { *op = left; return; }
+    if(dir == right) { *op = right; return; }
 }
 
 void choose_point_outside_ring(int2* pos) {
@@ -553,6 +581,23 @@ typedef struct Walker {
     Direction dir;
 } Walker;
 
+
+void dir_from_adyacent_ab(int2 a, int2 b, Direction* dir) {
+    int2 diff = (int2){b.x - a.x, b.y - a.y};
+    Direction dir_;
+    if(diff.x == 0 && diff.y != 0) {
+        if(diff.y < 0) { *dir = top; }
+        else { *dir = bottom; }
+    } else if(diff.x != 0 && diff.y == 0) {
+        if(diff.x < 0) { *dir = left; }
+        else { *dir = right; }
+    } else { *dir =  none; }
+}
+
+void dir_from_walker_to_walker(Walker walker_a, Walker walker_b, Direction* dir) {
+    dir_from_adyacent_ab(walker_a.head, walker_b.head, dir);
+}
+
 void predict_new_pos(Walker walker, int2* prediction) {
     int2 new_pos = walker.head;
     switch(walker.dir) {
@@ -567,6 +612,32 @@ void predict_new_pos(Walker walker, int2* prediction) {
             break;
         case right:
             new_pos.x += 1;
+            break;
+        default:
+            printf("hmmm.... no direction for walker given...\n");
+            break;
+    }
+
+    *prediction =new_pos;
+}
+
+void predict_new_pos_in_dir(Walker walker, Direction dir, int2* prediction) {
+    int2 new_pos = walker.head;
+    switch(dir) {
+        case top:
+            new_pos.y -= 1;
+            break;
+        case bottom:
+            new_pos.y += 1;
+            break;
+        case left:
+            new_pos.x -= 1;
+            break;
+        case right:
+            new_pos.x += 1;
+            break;
+        default:
+            printf("hmmm.... no direction for walker given...\n");
             break;
     }
 
@@ -588,6 +659,9 @@ bool move_walker_in_dir(Walker* walker) {
         case right:
             new_pos.x += 1;
             break;
+        default:
+            printf("hmmm.... no direction for walker given...\n");
+            break;
     }
     if(!is_point_in_maze(new_pos)) { return false; }
 
@@ -595,12 +669,109 @@ bool move_walker_in_dir(Walker* walker) {
     return true;
 }
 
-// Carve maze
-void gen_maze(maze* maze, Walker* walker, Walker* prev_walker, int step) {
+bool is_pointing_wall(maze* maze, Walker walker) {
+    return check_wall(maze, walker.head, walker.dir);
+}
+
+bool can_move_walker_in_dir(maze* maze, Walker* walker) {
+    int2 new_pos = walker->head;
+    switch(walker->dir) {
+        case top:
+            new_pos.y -= 1;
+            break;
+        case bottom:
+            new_pos.y += 1;
+            break;
+        case left:
+            new_pos.x -= 1;
+            break;
+        case right:
+            new_pos.x += 1;
+            break;
+        default:
+            printf("hmmm.... no direction for walker given...\n");
+            break;
+    }
+    if(!is_point_in_maze(new_pos)) { return false; }
+    if(maze->grid[new_pos.x][new_pos.y].visited == true) { return false; }
+
+    return true;
+}
+
+bool can_move_walker_in_visited(maze* maze, Walker* walker, Vector_int2* visited_pos) {
+    int2 new_pos = walker->head;
+    switch(walker->dir) {
+        case top:
+            new_pos.y -= 1;
+            break;
+        case bottom:
+            new_pos.y += 1;
+            break;
+        case left:
+            new_pos.x -= 1;
+            break;
+        case right:
+            new_pos.x += 1;
+            break;
+        default:
+            printf("hmmm.... no direction for walker given...\n");
+            break;
+    }
+    if(!is_point_in_maze(new_pos) ||
+       maze->grid[new_pos.x][new_pos.y].visited == false ||
+       check_wall(maze, walker->head, walker->dir) ||
+       contains_vector_int2(visited_pos, new_pos)) {
+        return false;
+    }
+
+    return true;
+}
+
+bool is_enclosed_by_visited_pos(maze* maze, Walker walker) {
+    int2 predicted_pos;
+    Walker tmp_walker = walker;
+    for(int i = 0; i < 4; i++) {
+        tmp_walker.dir = i;
+        predict_new_pos(tmp_walker, &predicted_pos);
+        if(is_point_in_maze(predicted_pos)) {
+            if(maze->grid[predicted_pos.x][predicted_pos.y].visited == false) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+void backtrack_walker(maze* maze, Walker* walker, Walker* prev_walker, Vector_int2* visited_pos) {
+    int2 predicted_pos;
+    predict_new_pos(*walker, &predicted_pos);
+
+    int choosed_num = 0;
+    while(!can_move_walker_in_visited(maze, walker, visited_pos)) {
+        if(choosed_num >= 4) { return; }
+        printf("Choosing new dir to backtrack..., prev: %d\n", walker->dir);
+        choose_dir(&walker->dir);
+        choosed_num++;
+    }
+    if(maze->grid[predicted_pos.x][predicted_pos.y].visited == true)
+        append_vector_int2(visited_pos, walker->head);
+    move_walker_in_dir(walker);
+}
+
+// Recursive backtracking
+void gen_maze(maze* maze, Walker* walker, Walker* prev_walker, int step, Vector_int2* visited_pos, bool* backtrack_nearest, bool* end_gen) {
     int2 tmp_pos;
     Direction tmp_dir;
+    Direction tmp_dir_2;
 
     srand(time(NULL));
+
+    printf("backtrack_nearest: %d\n", *backtrack_nearest);
+    if(*backtrack_nearest) {
+        printf("backtracking to nearest...\n");
+        backtrack_walker(maze, walker, prev_walker, visited_pos);
+        return;
+    }
 
 
     // If the step if the 0th or the 1st then add the entrances and put the
@@ -615,33 +786,48 @@ void gen_maze(maze* maze, Walker* walker, Walker* prev_walker, int step) {
 
         if(step < 1) {
             walker->head = tmp_pos;
+            maze->grid[tmp_pos.x][tmp_pos.y].visited = true;
         }
         return;
     }
 
     // If this is an actual step then make the walker walk and open walls
     Walker tmp_walker = *walker;
+    int2 predicted_pos;
     do {
+        if(is_enclosed_by_visited_pos(maze, *walker)) {
+            *backtrack_nearest = true;
+            return;
+        }
         do {
-            choose_wall(&tmp_dir);
-        } while(prev_walker->dir == tmp_dir);
+            choose_dir(&tmp_dir);
+            dir_from_walker_to_walker(*walker, *prev_walker, &tmp_dir_2);
+        } while(tmp_dir_2 == tmp_dir);
 
 
         walker->dir = tmp_dir;
+        predict_new_pos(*walker, &predicted_pos);
 
-    } while(!move_walker_in_dir(walker));
+    } while(!can_move_walker_in_dir(maze, walker));
+    move_walker_in_dir(walker);
+    maze->grid[predicted_pos.x][predicted_pos.y].visited = true;
+
 
     *prev_walker = tmp_walker;
+    clear_wall(maze, prev_walker->head, tmp_dir);
 }
 
 
 /* Main Functions */
-void updateScene(double deltaTime, double* time_elapsed, maze* maze, int* step, Walker* walker, Walker* prev_walker) {
-    if(*time_elapsed >= 0.5) {
+void updateScene(double deltaTime, double* time_elapsed, maze* maze, int* step, Walker* walker, Walker* prev_walker, Vector_int2* visited_pos, bool* backtrack_nearest, bool* end_gen) {
+    if(*time_elapsed >= 0.05 && !*end_gen) {
         printf("Step: %d\n", *step);
-        gen_maze(maze, walker, prev_walker, *step);
+        gen_maze(maze, walker, prev_walker, *step, visited_pos, backtrack_nearest, end_gen);
         *time_elapsed = 0.0;
         *step = *step + 1;
+    }
+    if(*end_gen) {
+        printf("Maze generation stopped...\n");
     }
     return;
 }
@@ -650,7 +836,7 @@ void updateScene(double deltaTime, double* time_elapsed, maze* maze, int* step, 
 // Probably gonna change to a easier way to make trails for bodies
 // Trail bodyTrail;
 
-void renderScene(GLFWwindow* window, maze* maze, Walker walker, Walker prev_walker) {
+void renderScene(GLFWwindow* window, maze* maze, Walker walker, Walker prev_walker, Vector_int2* visited_pos) {
     //glClearColor(0.05f, 0.05f, 0.1f, 1.0f);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -660,7 +846,7 @@ void renderScene(GLFWwindow* window, maze* maze, Walker walker, Walker prev_walk
     // Test
     // Rectangle a = {{200.0f, 204.0f}, {50.0f, 100.0f}, {255, 255, 0, 255}};
     // drawRectangle(a);
-    render_maze(maze);
+    render_maze(maze, visited_pos);
 
     float walker_r = 25.0f;
     float2 walker_pos = {walker.head.x * GRID_SIZE + h_g + h_l_t, walker.head.y * GRID_SIZE + h_g + h_l_t};
@@ -684,6 +870,12 @@ void gameLoop(GLFWwindow* window, maze* maze) {
     Walker walker = {head};
     Walker prev_walker = {head};
 
+    Vector_int2 visited_pos;
+    init_vector_int2(&visited_pos);
+
+    bool backtrack_nearest = false;
+    bool end_gen = false;
+
     while (!glfwWindowShouldClose(window)) {
         double currentTime = glfwGetTime();
         float deltaTime = (float)(currentTime - lastTime);
@@ -693,8 +885,8 @@ void gameLoop(GLFWwindow* window, maze* maze) {
 
         glfwPollEvents();
 
-        updateScene(deltaTime, &time_elapsed, maze, &step, &walker, &prev_walker);
-        renderScene(window, maze, walker, prev_walker);
+        updateScene(deltaTime, &time_elapsed, maze, &step, &walker, &prev_walker, &visited_pos, &backtrack_nearest, &end_gen);
+        renderScene(window, maze, walker, prev_walker, &visited_pos);
     }
 }
 
